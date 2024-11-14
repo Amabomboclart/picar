@@ -34,25 +34,32 @@ def process_image_for_lines(image):
 # Car control functions
 def turn_left():
     print("Turn Left")
+    back_wheels.ready()
+    front_wheels.ready()
+    back_wheels.forward()
     front_wheels.turn_left()
     back_wheels.speed = 50
-    back_wheels.forward()
 
 def turn_right():
     print("Turn Right")
+    back_wheels.ready()
+    front_wheels.ready()
+    back_wheels.forward()
     front_wheels.turn_right()
     back_wheels.speed = 50
-    back_wheels.forward()
 
 def go_straight():
     print("Go Straight")
+    back_wheels.ready()
+    front_wheels.ready()
+    back_wheels.forward()
     front_wheels.turn_straight()
     back_wheels.speed = 80
-    back_wheels.forward()
 
 def stop_car():
     print("Stop")
     back_wheels.stop()
+
 
 def drive_car(lines, image_width):
     if lines is None:
