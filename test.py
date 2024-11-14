@@ -35,19 +35,19 @@ def process_image_for_lines(image):
 
 # Car control functions
 def turn_left():
-    print("Turn Left: Setting front wheels and back wheels")
+    print("Turn Left")
     front_wheels.turn_left()
     back_wheels.speed = 50
     back_wheels.forward()
 
 def turn_right():
-    print("Turn Right: Setting front wheels and back wheels")
+    print("Turn Right")
     front_wheels.turn_right()
     back_wheels.speed = 50
     back_wheels.forward()
 
 def go_straight():
-    print("Go Straight: Setting front wheels and back wheels")
+    print("Go Straight")
     front_wheels.turn_straight()
     back_wheels.speed = 80
     back_wheels.forward()
@@ -56,13 +56,13 @@ def stop_car():
     print("Stop")
     back_wheels.stop()
 
+# Enhanced line-following logic
 def drive_car(lines, image_width):
     if lines is None:
         print("No lines detected!")
         stop_car()
         return
 
-    # Extract line coordinates to find the leftmost and rightmost boundaries
     left_line = None
     right_line = None
 
@@ -74,7 +74,13 @@ def drive_car(lines, image_width):
                 right_line = (x1, y1, x2, y2)
 
     if left_line and right_line:
-        mid_x = (left_line[0] + right_line[0]) // 2
+        left_x = left_line[0]
+        right_x = right_line[0]
+        mid_x = (left_x + right_x) // 2  # Calculate midpoint between left and right lines
+
+        print(f"Left Line: {left_x}, Right Line: {right_x}, Midpoint: {mid_x}")
+
+        # Adjust movement based on the midpoint position relative to image width
         if mid_x < image_width // 3:
             turn_left()
         elif mid_x > 2 * image_width // 3:
@@ -82,7 +88,7 @@ def drive_car(lines, image_width):
         else:
             go_straight()
     else:
-        print("Only one line detected, stopping car.")
+        print("One line detected, stopping car.")
         stop_car()
 
 try:
