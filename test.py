@@ -7,6 +7,7 @@ import cv2
 from back_wheels import Back_Wheels
 from front_wheels import Front_Wheels
 
+# Initialize camera and motors
 camera = Picamera2()
 camera.start()
 back_wheels = Back_Wheels()
@@ -17,6 +18,7 @@ front_wheels.ready()
 
 time.sleep(2)
 
+# Process image for line detection
 def process_image_for_lines(image):
     img = np.array(image)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -33,33 +35,26 @@ def process_image_for_lines(image):
 
 # Car control functions
 def turn_left():
-    print("Turn Left")
-    back_wheels.ready()
-    front_wheels.ready()
-    back_wheels.forward()
+    print("Turn Left: Setting front wheels and back wheels")
     front_wheels.turn_left()
     back_wheels.speed = 50
+    back_wheels.forward()
 
 def turn_right():
-    print("Turn Right")
-    back_wheels.ready()
-    front_wheels.ready()
-    back_wheels.forward()
+    print("Turn Right: Setting front wheels and back wheels")
     front_wheels.turn_right()
     back_wheels.speed = 50
+    back_wheels.forward()
 
 def go_straight():
-    print("Go Straight")
-    back_wheels.ready()
-    front_wheels.ready()
-    back_wheels.forward()
+    print("Go Straight: Setting front wheels and back wheels")
     front_wheels.turn_straight()
     back_wheels.speed = 80
+    back_wheels.forward()
 
 def stop_car():
     print("Stop")
     back_wheels.stop()
-
 
 def drive_car(lines, image_width):
     if lines is None:
@@ -87,6 +82,7 @@ def drive_car(lines, image_width):
         else:
             go_straight()
     else:
+        print("Only one line detected, stopping car.")
         stop_car()
 
 try:
