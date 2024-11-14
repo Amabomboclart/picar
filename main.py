@@ -4,7 +4,7 @@ import io
 import time
 import numpy as np
 import cv2
-from back_wheels import Back_Wheels 
+from back_wheels import Back_Wheels
 from front_wheels import Front_Wheels
 
 camera = Picamera2()
@@ -26,37 +26,49 @@ def process_image_for_lines(image):
     cv2.drawContours(img, contours, -1, (0, 255, 0), 3)
     return contours, img
 
-# Function to control the car's direction based on detected line position
+# Functions for xar control actions
+def turn_left():
+    print("Turn Left")
+    front_wheels.turn_left()
+    back_wheels.speed = 50
+    back_wheels.forward()
+
+def turn_right():
+    print("Turn Right")
+    front_wheels.turn_right()
+    back_wheels.speed = 50
+    back_wheels.forward()
+
+def go_straight():
+    print("Go Straight")
+    front_wheels.turn_straight()
+    back_wheels.speed = 80
+    back_wheels.forward()
+
+def stop_car():
+    print("Stop")
+    back_wheels.stop()
+
 def drive_car(contours):
     if len(contours) == 0:
         print("No line detected!")
-        back_wheels.stop()
+        stop_car()
         return
 
     largest_contour = max(contours, key=cv2.contourArea)
     moments = cv2.moments(largest_contour)
     if moments["m00"] != 0:
         cx = int(moments["m10"] / moments["m00"])
-        image_width = 640  # Adjust if different from actual image width
+        image_width = 640 
 
-        # Set control logic based on the position of the line
         if cx < image_width // 3:
-            print("Turn Left")
-            front_wheels.turn_left()  # Turn wheels to the left
-            back_wheels.speed = 50  # Adjust speed as needed
-            back_wheels.forward()  # Move forward while turning
+            turn_left()
         elif cx > 2 * image_width // 3:
-            print("Turn Right")
-            front_wheels.turn_right()  # Turn wheels to the right
-            back_wheels.speed = 50
-            back_wheels.forward()
+            turn_right()
         else:
-            print("Go Straight")
-            front_wheels.turn_straight()  # Keep wheels straight
-            back_wheels.speed = 80  # Increase speed when going straight
-            back_wheels.forward()
+            go_straight()
     else:
-        back_wheels.stop()
+        stop_car()
 
 try:
     while True:
@@ -77,7 +89,7 @@ try:
 
 except KeyboardInterrupt:
     print("Stopping line-following loop.")
-    back_wheels.stop()
-    front_wheels.turn_straight() 
+    stop_car()
+    front_wheels.turn_straight()
     camera.stop()
     cv2.destroyAllWindows()
