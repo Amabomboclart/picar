@@ -22,21 +22,7 @@ def process_image_for_lines(image):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
     edges = cv2.Canny(thresh, 50, 150)
-    contours = cv2.HoughLines(edges, 1, np.pi/180, 200)
-
-# # Draw the lines on the original image
-#     if lines is not None:
-#         for rho, theta in lines[:, 0]:
-#             a = np.cos(theta)
-#             b = np.sin(theta)
-#             x0 = a * rho
-#             y0 = b * rho
-#             x1 = int(x0 + 1000 * (-b))
-#             x2 = int(x0 - 1000 * (-b))
-#             y1 = int(y0 + 1000 * (a))
-#             y2 = int(y0 - 1000 * (a))
-#             cv2.line(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
-    #contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     cv2.drawContours(img, contours, -1, (0, 255, 0), 3)
     return contours, img
 
