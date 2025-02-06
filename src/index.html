@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<script type="text/javascript" src="/traffic_light/js/utils.js"></script>
+	<script type="text/javascript" src="/traffic_light/js/gl.js"></script>
+	<link rel="stylesheet" href="/traffic_light/css/style.css">
+	<title>Traffic Light</title>
+</head>
+<body>
+	<canvas id="_canvas"></canvas>
+	<div id="_controls">
+		<div id="_control_title">
+			<h1>Controls</h1>
+			<span id="_control_hamburger">-</span>
+		</div>
+		<div id="_additional_controls">
+			<div id="_skies" style="margin-bottom: 1rem;">
+				<div class="sky" onclick="select_background(this)" sky="street" style="background-image:url('/traffic_light/img/street.png');"></div>
+				<div class="sky" onclick="select_background(this)" sky="valley" style="background-image:url('/traffic_light/img/valley.png');"></div>
+				<div class="sky" onclick="select_background(this)" sky="snow" style="background-image:url('/traffic_light/img/snow.png');"></div>
+			</div>
+			<div id="_colors" style="margin-bottom: 1rem;">
+				<div class="color" onclick="select_color(this)" color="red" style="background-color: #f20f1c;"></div>
+				<div class="color" onclick="select_color(this)" color="orange" style="background-color: #eaa81e;"></div>
+				<div class="color" onclick="select_color(this)" color="green" style="background-color: #72e5c4;"></div>
+			</div>
+			<div id="_auto">
+				<h2>Automatic</h2>
+				<label class="switch">
+					<input type="checkbox" id="_automatic" />
+					<span class="slider round"></span>
+				</label>
+			</div>
+		</div>
+	</div>
+	<div id="_blocker" show="1"></div>
+	<script id="_default_vert" type="x-shader/x-fragment">precision highp float;
+		attribute vec3 a_position; //  0.. 12
+		attribute vec3 a_normal;   // 12.. 24
+		attribute vec4 a_tangent;  // 24.. 40
+		attribute vec2 a_texcoord; // 40.. 48
+		attribute vec4 a_color;    // 48.. 64
+
+		uniform mat4 u_model;
+		uniform mat4 u_mvp;
+
+		varying highp vec4 v_color;
+		varying highp vec3 v_position;
+		varying highp vec3 v_normal;
+		varying highp vec3 v_tangent;
+		varying highp vec3 v_bitangent;
+		varying highp vec2 v_texcoord;
+
+		void main()
+		{
+			vec4 vertex = vec4(a_position, 1.0);
+			vec4 wpos = u_model * vertex;
+			vec4 pos = u_mvp * vertex;
+			
+			mat3 toworld = mat3(u_model);
+			vec3 world_normal = normalize(toworld * a_normal);
+			vec3 tangent = a_tangent.xyz;
+			vec3 world_tangent = normalize(toworld * tangent);
+			
+			vec2 texcoord = a_texcoord;
+			texcoord.y = 1.0 - texcoord.y;
+			
+			v_color = a_color * 0.95;
+			v_position = wpos.xyz;
+			v_normal = world_normal;
+			v_tangent = world_tangent;
+			v_bitangent = cross(world_normal, world_tangent) * a_tangent.w;
+			v_texcoord = texcoord;
+			
+			gl_Position = pos;
+		}
+	</script>
+	<script id="_default_frag" type="x-shader/x-fragment">precision highp float;
+		#define PI 3.14159265358979
+		
+		// Uniforms
+		uniform vec4 u_color;           // The single color of the material
+		uniform vec4 u_emission;        // Emission color
+		uniform vec4 u_settings0;       // y: roughness, z: ambient_occlusion, w: metallic
+		uniform vec3 u_eye;             // Camera position
+		uniform vec3 u_sun_direction;   // Direction of the sun light (should be normalized)
+		uniform vec3 u_sun_color;       // Color of the sun light
+		uniform mat3 u_light_positions;
+		uniform vec3 u_light_strengths;
+		uniform sampler2D u_sky_0;
+		uniform sampler2D u_sky_1;
+		uniform sampler2D u_sky_2;
+		
+		varying highp vec4 v_color;
+		varying highp vec3 v_position;
+		varying highp vec3 v_normal;
+		
+		vec2 panorama(vec3 ray)
+		{
+			return vec2(
+				0.5 - atan(ray.z, ray.x) * (0.5 / PI),
+				acos(ray.y) * (1.0 / PI));
+		}
+		
+		float schlick(float ndv, float roughness) {
+			float r = roughness + 1.0;
+			float k = r * r / 8.0;
+			return ndv / (ndv * (1.0 - k) + k);
+		}
+		
+		vec3 sample_sky(vec2 texcoord, float lod) {
+			vec3 color;
+			if (lod <= 0.0) {
+				color = texture2D(u_sky_0, texcoord).rgb;
+			} if (lod < 1.0) {
+				vec3 color_0 = texture2D(u_sky_0, texcoord).rgb;
+				vec3 color_1 = texture2D(u_sky_1, texcoord).rgb;
+				color = mix(color_0, color_1, u_settings0.y);
+			} else if (lod < 2.0) {
+				vec3 color_0 = texture2D(u_sky_1, texcoord).rgb;
+				vec3 color_1 = texture2D(u_sky_2, texcoord).rgb;
+				color = mix(color_0, color_1, u_settings0.y - 1.0);
+			} else {
+				color = texture2D(u_sky_2, texcoord).rgb;
+			}
+			return color;
+		}
+		
+		void main() {
+			vec3 normal = normalize(v_normal);
+			vec3 view = normalize(u_eye - v_position);
+			vec3 reflection = reflect(-view, normal);
+			vec3 irradiance = sample_sky(panorama(normal), 3.0).rgb;
+			vec3 specular = sample_sky(panorama(reflection), u_settings0.y * 2.0).rgb;
+		
+			vec3 albedo = pow(u_color.rgb, vec3(2.2));
+			float ao = u_settings0.z; // Ambient occlusion factor
+			float metallic = u_settings0.w; // Metallic factor
+			float roughness = u_settings0.y; // Roughness factor
+		
+			vec3 light = vec3(0.05);
+			float ndv = max(dot(normal, view), 0.0);
+			vec3 reflectance = mix(vec3(0.04), albedo, metallic);
+			reflectance = reflectance + (max(vec3(1.0 - roughness), reflectance) - reflectance) * pow(1.0 - ndv, 5.0);
+		
+			albedo *= irradiance;
+			specular *= reflectance;
+			vec3 ambient = ((1.0 - metallic) * (vec3(1.0) - reflectance) * albedo + specular) * (ao * 2.0);
+		
+			// Point lights setup (unchanged)
+			vec3 light_strengths = u_light_strengths;
+			mat3 point_lights_pos = u_light_positions;
+			mat3 point_lights_col = mat3(
+				vec3(0.95, 0.06, 0.11) * light_strengths.x,
+				vec3(0.92, 0.66, 0.12) * light_strengths.y,
+				vec3(0.45, 0.90, 0.77) * light_strengths.z);
+		
+			for (int i = 0; i < 3; ++i) {
+				vec3 light_position = point_lights_pos[i];
+				vec3 light_color = point_lights_col[i];
+				vec3 delta = light_position - v_position;
+				vec3 direction = normalize(delta);
+				vec3 heuristic = normalize(view + direction);
+				float ndl = max(dot(normal, direction), 0.0);
+				float attenuation = 1.0 / dot(delta, delta);
+		
+				float ndf;
+				{
+					float a = roughness * roughness;
+					float asqr = a * a;
+					float ndh = max(dot(normal, heuristic), 0.0);
+					float denom = (ndh * ndh * (asqr - 1.0) + 1.0);
+					ndf = asqr / (PI * denom * denom);
+				}
+		
+				float g = schlick(ndv, roughness) * schlick(ndl, roughness);
+				vec3 fresnel = reflectance + (1.0 - reflectance) * pow(1.0 - max(dot(heuristic, view), 0.0), 5.0);
+				vec3 specularl = (ndf * g * fresnel) / ((4.0 * ndv * ndl) + 0.001);
+		
+				light += ((vec3(1.0) - fresnel) * (1.0 - metallic) * albedo / PI + specularl) * light_color * attenuation * ndl;
+			}
+		
+			// Directional (Sun) light calculation
+			vec3 sun_direction = normalize(u_sun_direction);
+			float ndl_sun = max(dot(normal, sun_direction), 0.0);
+			vec3 sun_heuristic = normalize(view + sun_direction);
+		
+			// Fresnel for sun light
+			vec3 fresnel_sun = reflectance + (1.0 - reflectance) * pow(1.0 - max(dot(sun_heuristic, view), 0.0), 5.0);
+		
+			// Specular reflection for sun light
+			float ndh_sun = max(dot(normal, sun_heuristic), 0.0);
+			float ndf_sun;
+			{
+				float a = roughness * roughness;
+				float asqr = a * a;
+				float denom_sun = (ndh_sun * ndh_sun * (asqr - 1.0) + 1.0);
+				ndf_sun = asqr / (PI * denom_sun * denom_sun);
+			}
+			float g_sun = schlick(ndv, roughness) * schlick(ndl_sun, roughness);
+			vec3 specular_sun = (ndf_sun * g_sun * fresnel_sun) / ((4.0 * ndv * ndl_sun) + 0.001);
+		
+			// Final sun light contribution
+			light += ((vec3(1.0) - fresnel_sun) * (1.0 - metallic) * albedo / PI + specular_sun) * u_sun_color * ndl_sun;
+		
+			// Final color output
+			gl_FragColor = vec4(ambient * 0.4 + light + u_emission.rgb, 1.0);
+			//gl_FragColor.rgb = u_sun_color * vec3(ndl_sun);
+		}
+	</script>
+	<script id="_sky_vert" type="x-shader/x-fragment">precision highp float;
+		attribute vec3 a_position; //  0.. 12
+		
+		varying highp vec3 v_position;
+		
+		uniform mat4 u_mvp;
+		
+		void main()
+		{
+			vec3 wpos = normalize(a_position);
+			vec4 vertex = u_mvp * vec4(wpos * 128.0, 1.0);
+			v_position = wpos;
+			gl_Position = vertex;
+		}
+	</script>
+	<script id="_sky_frag" type="x-shader/x-fragment">precision highp float;
+		#define PI 3.14159265358979
+		
+		varying highp vec3 v_position;
+		
+		uniform sampler2D u_sky_0;
+		uniform sampler2D u_sky_1;
+		uniform sampler2D u_sky_2;
+		uniform vec4 u_settings0;
+		uniform vec3 u_eye;
+		
+		vec2 panorama(vec3 ray)
+		{
+			return vec2(
+				0.5 - atan(ray.z, ray.x) * (0.5 / PI),
+				acos(ray.y) * (1.0 / PI));
+		}
+		
+		float rand(vec3 co){
+			return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453 * co.z);
+		}
+		
+		void main()
+		{
+			vec3 view = normalize(-v_position);
+			vec2 texcoord = panorama(-view);
+			float lod = u_settings0.y;
+			
+			if (u_settings0.x == 1.0) {
+				vec3 ruv = vec3(texcoord, u_settings0.z);
+				gl_FragColor = vec4(
+					rand(ruv + vec3(331.53, 131.64, 11.25)),
+					rand(ruv + vec3(711.31, 476.61, 91.25)),
+					rand(ruv + vec3(127.99, 321.81, 81.25)), 1.0);
+			} else {
+				vec3 color;
+				if (lod <= 0.0) {
+					color = texture2D(u_sky_0, texcoord).rgb;
+				} if (lod < 1.0) {
+					vec3 color_0 = texture2D(u_sky_0, texcoord).rgb;
+					vec3 color_1 = texture2D(u_sky_1, texcoord).rgb;
+					color = mix(color_0, color_1, u_settings0.y);
+				} else if (lod < 2.0) {
+					vec3 color_0 = texture2D(u_sky_1, texcoord).rgb;
+					vec3 color_1 = texture2D(u_sky_2, texcoord).rgb;
+					color = mix(color_0, color_1, u_settings0.y - 1.0);
+				} else {
+					color = texture2D(u_sky_2, texcoord).rgb;
+				}
+				gl_FragColor = vec4(color, 1.0);
+			}
+		}
+	</script>
+	<script id="_mixer_vert" type="x-shader/x-fragment">precision highp float;
+		attribute vec2 a_position;
+		attribute vec2 a_texcoord;
+		varying vec2 v_texcoord;
+		void main() {
+			gl_Position = vec4(a_position, 0.0, 1.0);
+			v_texcoord = a_texcoord;
+		}
+	</script>
+	<script id="_mixer_frag" type="x-shader/x-fragment">precision highp float;
+		uniform sampler2D u_texture_0;
+		uniform sampler2D u_texture_1;
+		uniform sampler2D u_noise_tex;
+		varying vec2 v_texcoord;
+		uniform vec3 u_settings0;
+		void main() {
+			float noise = texture2D(u_noise_tex, v_texcoord + u_settings0.yz).r;
+			noise = 1.0 - smoothstep(u_settings0.x - 0.04, u_settings0.x + 0.04, noise);
+			
+			vec4 color_0 = texture2D(u_texture_0, v_texcoord);
+			vec4 color_1 = texture2D(u_texture_1, v_texcoord);
+			gl_FragColor = mix(color_0, color_1, noise);
+		}
+	</script>
+	<script id="_webgl_error" type="text/html">
+		<h1>Unable to load program</h1>
+		<p>WebGL is not supported on your device.</p>
+	</script>
+	<script>
+		var state;
+		console.log(
+			"User Agent String: "+navigator.userAgent+"\n"+
+			"Size: "+window.innerWidth+"x"+window.innerHeight+"\n"+
+			"Device Pixel Ratio: "+window.devicePixelRatio+"\n"+
+			"Touch Screen: "+('ontouchstart' in window || navigator.maxTouchPoints > 0 || navigator.msMaxTouchPoints > 0));
+			
+		let _skies = document.getElementsByClassName("sky");
+		function select_background(name) {
+			if (typeof name !== "string") {
+				name = name.getAttribute("sky");
+			}
+			for (let i = 0; i < _skies.length; i++) {
+				let sky = _skies[i];
+				let sky_name = sky.getAttribute("sky");
+				if (sky_name === name) {
+					sky.setAttribute("selected", "1");
+				} else {
+					sky.removeAttribute("selected");
+				}
+			}
+			state.save_data.sky_tex = name;
+			state.save();
+		}
+		
+		let _colors = document.getElementsByClassName("color");
+		function select_color(name, wait) {
+			if (typeof name !== "string") {
+				name = name.getAttribute("color");
+			}
+			for (let i = 0; i < _skies.length; i++) {
+				let color = _colors[i];
+				let color_name = color.getAttribute("color");
+				if (color_name === name) {
+					color.setAttribute("selected", "1");
+					state.save_data[color_name] = true;
+				} else {
+					color.removeAttribute("selected");
+					state.save_data[color_name] = false;
+				}
+			}
+			state.automatic_time = wait || 8;
+			state.save();
+		}
+		
+		let _controls = document.getElementById("_controls");
+		let _control_title = document.getElementById("_control_title");
+		let _control_hamburger = document.getElementById("_control_hamburger");
+		_control_title.onclick = function() {
+			if (_controls.hasAttribute("close")) {
+				_controls.removeAttribute("close");
+				_control_hamburger.innerHTML = "-";
+			} else {
+				_controls.setAttribute("close", "1");
+				_control_hamburger.innerHTML = "+";
+			}
+		}
+		
+		let _automatic = document.getElementById("_automatic");
+		
+		window.addEventListener('load', function () {
+			var _blocker = document.getElementById("_blocker");
+			var _canvas = document.getElementById("_canvas");
+			var _canvas_gl = _canvas.getContext("webgl", {
+				antialias: true,
+			});
+			if (_canvas_gl) {
+				state = gl_init(_canvas_gl, _canvas);
+				select_background(state.save_data.sky_tex);
+				var last_time = new Date();
+				var time = 0;
+				var update = function () {
+					let timestamp = new Date();
+					var deltaTime = Math.min(0.1, (timestamp - last_time) / 1000);
+					last_time = timestamp;
+					time += deltaTime;
+					
+					if (_automatic.checked) {
+						if (state.automatic_time == null || state.automatic_time < 0) {
+							if (state.save_data.red) {
+								select_color("green"); // 6 - 30+ seconds
+								state.automatic_time = 6 + Math.random() * 4;
+							} else if (state.save_data.orange) {
+								select_color("red"); // 6 - 90 seconds
+								state.automatic_time = 1.5 + Math.random() * 20;
+							} else {
+								select_color("orange"); // 3 - 5 seconds, depending on speed
+								state.automatic_time = 3.5;
+							}
+						}
+						state.automatic_time -= deltaTime;
+					}
+					
+					gl_update(_canvas_gl, state, _canvas, time, deltaTime);
+					window.requestAnimationFrame(update);
+					_blocker.setAttribute("show", state.error ? "1" : "0");
+				};
+				update();
+			} else {
+				console.error("WebGL not supported");
+				_blocker.innerHTML = document.getElementById("_webgl_error").innerHTML;
+				_canvas.style.display = "none";
+			}
+		});
+	</script>
+</body>
+</html>
