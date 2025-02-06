@@ -26,7 +26,6 @@ def process_image_for_lines(image):
     cv2.drawContours(img, contours, -1, (0, 255, 0), 3)
     return contours, img
 
-# Functions for xar control actions
 def turn_left():
     print("Turn Left")
     front_wheels.turn_left()
